@@ -1,62 +1,80 @@
-# Brain Tumor Detection with CNN and Grad-CAM
+# Brain Tumor Detection in MRI with a CNN and Grad-CAM
 
-## Overview
-This project implements a deep learning pipeline for brain tumor detection in MRI images using a Convolutional Neural Network (CNN) and Grad-CAM for visual explanation. The model classifies images as "tumor" or "no tumor" and highlights the regions most responsible for the decision.
+A small, deliberately regularised CNN (PyTorch) that classifies brain MRI slices as **tumor** or
+**no tumor**, with Grad-CAM heatmaps to show which regions drove each prediction.
 
-## Dataset Structure
-- `yes/` — MRI images with tumors
-- `no/` — MRI images without tumors
+## Results
 
-## Features
-- **CNN classifier** for yes/no tumor detection
-- **Data augmentation** for robust training
-- **Grad-CAM** for visualizing model attention (red/yellow overlay)
-- **Realistic evaluation** (no data leakage, honest metrics)
-- **Plots:**
-  - Training/test loss and accuracy
-  - Confusion matrix
-  - Grad-CAM overlays on sample predictions
+Held-out test set of **750 images** (25% of the data, stratified, never seen in training):
 
-## Setup
-1. Install dependencies:
-   ```bash
-   pip install -r requirements.txt
-   ```
-2. Place your MRI images in the `yes/` and `no/` folders.
+| Class | Precision | Recall | F1 | Support |
+|---|---|---|---|---|
+| No tumor | 0.87 | 0.71 | 0.78 | 378 |
+| Tumor | 0.75 | **0.90** | 0.82 | 372 |
+| **Accuracy** | | | **0.80** | 750 |
 
-## Usage
-Run the main script:
+Confusion matrix: 333 tumors found, 39 missed; 267 healthy scans correct, 111 false alarms.
+The model is tuned towards **recall on tumors** (missing a tumor is worse than a false alarm),
+at the cost of more false positives.
+
+![Confusion matrix](images/confusion_matrix.png)
+
+### Grad-CAM examples
+
+Top row: original slices. Middle row: Grad-CAM overlay and prediction with confidence. Bottom row:
+thresholded image. On some tumors the heatmap concentrates on the lesion; on others it is spread
+across the whole brain, which is expected from a small CNN trained with image-level labels only.
+
+![Grad-CAM examples](images/gradcam_examples.png)
+
+### Training curves
+
+![Training curves](images/training_curves.png)
+
+Test accuracy is higher than training accuracy throughout. This comes from the heavy regularisation
+used on purpose: dropout of 0.7 and random flips are active during training and switched off at
+evaluation time. Mean confidence is 0.73 on correct predictions and 0.59 on wrong ones.
+
+## Data
+
+- 3,000 grayscale MRI slices: 1,500 with a tumor (`yes/`) and 1,500 without (`no/`)
+- Image-level labels only, no pixel masks
+- Resized and normalised; split 75% train (2,250) / 25% test (750) with a fixed random seed
+
+## Method
+
+1. **Model**: two convolution layers (4 and 8 filters), max pooling, dropout 0.7, a 16-unit dense
+   layer and a 2-class output. Small on purpose, to limit overfitting on 2,250 training images.
+2. **Augmentation**: random horizontal and vertical flips, training set only.
+3. **Training**: 15 epochs, batch size 8, CPU.
+4. **Evaluation**: confusion matrix, per-class precision/recall/F1, and a confidence analysis.
+5. **Explanation**: Grad-CAM on the last convolution layer, overlaid on each sample.
+
+## Run it
+
 ```bash
-python brain_tumor_classifier.py
+pip install -r requirements.txt
+jupyter notebook brain_tumor_classifier.ipynb
 ```
 
-## Outputs
-- **Training/test curves:** Show model learning progress
-- **Confusion matrix:** Shows true/false positives/negatives
-- **Classification report:** Precision, recall, f1-score
-- **Grad-CAM overlays:** Red/yellow highlights on tumor predictions
+Run all cells. The notebook expects the `yes/` and `no/` folders next to it, prints the metrics
+above, draws the figures, and saves the weights as `brain_tumor_classifier.pth` (git-ignored).
 
-## Model Performance (Example)
-- **Accuracy:** ~80%
-- **Tumor Recall:** 0.90 (model finds most tumors)
-- **No Tumor Precision:** 0.87 (few false alarms)
-- **Confidence:** Honest, not overconfident
+## Repository layout
 
-## How Grad-CAM Works
-Grad-CAM visualizes the regions the model focuses on for its decision. For each "tumor" prediction, a red/yellow heatmap is overlaid on the MRI, showing the most influential areas.
-
-## Project Structure
 ```
-Brain-Tumor-Detection-Dataset/
-├── yes/                  # Tumor images
-├── no/                   # No tumor images
-├── brain_tumor_classifier.py  # Main script
-├── requirements.txt      # Dependencies
-├── README.md             # This file
-├── REPORT.md             # Project report
+brain-tumor-detection/
+├── brain_tumor_classifier.ipynb   # full pipeline: data, model, training, evaluation, Grad-CAM
+├── yes/                           # MRI slices with a tumor (1,500)
+├── no/                            # MRI slices without a tumor (1,500)
+├── images/                        # figures used in this README
+├── REPORT.md                      # short project report
+└── requirements.txt
 ```
 
-## Notes
-- This project uses only image-level labels (no pixel masks).
-- Grad-CAM provides visual explanation, not precise segmentation.
-- For true tumor segmentation, pixel-level masks and a segmentation model are needed. 
+## Limitations
+
+- Image-level labels only: Grad-CAM is a visual explanation, not a segmentation of the tumor.
+- 111 false alarms out of 378 healthy scans; a larger model or transfer learning from a pretrained
+  backbone would likely raise precision.
+- Single random split; no cross-validation or external test set.
